@@ -25,6 +25,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from ..core import sensor_model
+from ..core.sensor_model import MODE_PARAMS
 from ..core.exposure import ExposureTracker, violations_for
 from ..extensions import db
 from ..models import ExposureAlert, SensorReading, Shipment, utcnow
@@ -37,7 +38,18 @@ TICK_SECONDS = 0.5
 
 
 class SimulationError(ValueError):
-    """Invalid simulator control request (maps to HTTP 409)."""
+    """Invalid simulator control request (maps to HTTP 409 or specified status_code)."""
+
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.message = message
+        if status_code is not None:
+            self.status_code = status_code
+        elif "Invalid simulation mode" in message or "mode" in message.lower():
+            self.status_code = 400
+        else:
+            self.status_code = 409
+        self.code = self.status_code
 
 
 def _iso(dt):
@@ -227,11 +239,15 @@ class SimulationEngine:
                 raise SimulationError(
                     f"Cannot start a journey that is '{shipment.status}'. Only Pending or Stopped shipments can be started."
                 )
+            if mode not in Shipment.SIM_MODES or mode not in MODE_PARAMS:
+                raise SimulationError(f"Invalid simulation mode: {mode}", 400)
             profile = shipment.product_profile.thresholds()
             if shipment.sim_state is None:
                 state = {"sensor": sensor_model.initial_state(profile, mode, random.Random(), intensity), "exposure": {}}
                 shipment.sim_started_at = utcnow()
             else:  # restart a stopped journey from where it halted, possibly with a new mode
+                if mode not in Shipment.SIM_MODES or mode not in MODE_PARAMS:
+                    raise SimulationError(f"Invalid simulation mode: {mode}", 400)
                 state = copy.deepcopy(shipment.sim_state)
                 state["sensor"]["mode"] = mode
                 state["sensor"]["intensity"] = float(intensity)

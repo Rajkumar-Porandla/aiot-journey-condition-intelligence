@@ -4,7 +4,7 @@ from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
-from ..auth import login_required
+from ..auth import admin_required, login_required
 from ..core.locations import LOCATIONS
 from ..extensions import db
 from ..models import ProductProfile, Shipment, utcnow
@@ -145,7 +145,7 @@ def update_shipment(shipment_id):
 
 
 @shipments_bp.delete("/<int:shipment_id>")
-@login_required
+@admin_required
 def delete_shipment(shipment_id):
     shipment = db.session.get(Shipment, shipment_id)
     if not shipment:

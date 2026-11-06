@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { api } from '../services/api';
@@ -8,7 +8,6 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 export default function WhatIfPage() {
   const [shipments, setShipments] = useState([]);
   const [selectedShipmentId, setSelectedShipmentId] = useState('');
-  const [selectedShipment, setSelectedShipment] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Slider inputs
@@ -25,6 +24,39 @@ export default function WhatIfPage() {
   const [simulating, setSimulating] = useState(false);
   const [savedScenarios, setSavedScenarios] = useState([]);
 
+  // Defined BEFORE any useEffect referencing it to avoid TDZ
+  const runSimulation = useCallback(async (shipmentId = null, overrideParams = null, saveAs = null) => {
+    setSimulating(true);
+    const targetId = shipmentId || selectedShipmentId;
+    const payload = overrideParams || {
+      shipment_id: targetId,
+      avg_temp: avgTemp,
+      max_temp: maxTemp,
+      avg_humidity: avgHumidity,
+      temp_exposure_hours: tempExpHours,
+      humidity_exposure_hours: humExpHours,
+      journey_duration_hours: journeyDuration,
+      violation_count: violationCount,
+      name: saveAs,
+    };
+    if (!payload.shipment_id) payload.shipment_id = targetId;
+
+    try {
+      const res = await api.runWhatIf(payload);
+      setResult(res);
+      if (saveAs) {
+        const scenRes = await api.getScenarios(targetId);
+        setSavedScenarios(scenRes.scenarios || []);
+        alert(`Scenario "${saveAs}" saved successfully!`);
+      }
+    } catch (err) {
+      alert(`Simulation error: ${err.message}`);
+    } finally {
+      setSimulating(false);
+    }
+  }, [selectedShipmentId, avgTemp, maxTemp, avgHumidity, tempExpHours, humExpHours, journeyDuration, violationCount]);
+
+  // Initial load of shipments list
   useEffect(() => {
     async function loadShipmentsList() {
       try {
@@ -42,75 +74,60 @@ export default function WhatIfPage() {
     loadShipmentsList();
   }, []);
 
+  // When selected shipment changes, load details & baseline simulation
   useEffect(() => {
     if (!selectedShipmentId) return;
 
+    const controller = new AbortController();
     async function fetchShipmentDetails() {
       try {
         const [shipRes, scenRes] = await Promise.all([
           api.getShipment(selectedShipmentId),
           api.getScenarios(selectedShipmentId),
         ]);
+        if (controller.signal.aborted) return;
+
         const s = shipRes.shipment;
-        setSelectedShipment(s);
         setSavedScenarios(scenRes.scenarios || []);
 
         const stats = s.stats || {};
-        const p = s.product_profile;
-        setAvgTemp(stats.avg_temp !== null && stats.avg_temp !== undefined ? stats.avg_temp : 4.0);
-        setMaxTemp(stats.max_temp !== null && stats.max_temp !== undefined ? stats.max_temp : 6.0);
-        setAvgHumidity(stats.avg_humidity !== null && stats.avg_humidity !== undefined ? stats.avg_humidity : 70.0);
-        setTempExpHours(stats.temp_exposure_hours || 0.0);
-        setHumExpHours(stats.humidity_exposure_hours || 0.0);
-        setJourneyDuration(stats.journey_duration_hours || 12.0);
-        setViolationCount(stats.violation_count || 0);
+        const safeAvgTemp = stats.avg_temp !== null && stats.avg_temp !== undefined ? stats.avg_temp : 4.0;
+        const safeMaxTemp = stats.max_temp !== null && stats.max_temp !== undefined ? stats.max_temp : 6.0;
+        const safeAvgHum = stats.avg_humidity !== null && stats.avg_humidity !== undefined ? stats.avg_humidity : 70.0;
+        const safeTempExp = stats.temp_exposure_hours || 0.0;
+        const safeHumExp = stats.humidity_exposure_hours || 0.0;
+        const safeDuration = stats.journey_duration_hours || 12.0;
+        const safeViolations = stats.violation_count || 0;
+
+        setAvgTemp(safeAvgTemp);
+        setMaxTemp(safeMaxTemp);
+        setAvgHumidity(safeAvgHum);
+        setTempExpHours(safeTempExp);
+        setHumExpHours(safeHumExp);
+        setJourneyDuration(safeDuration);
+        setViolationCount(safeViolations);
 
         // Run baseline comparison immediately
         runSimulation(s.id, {
-          avg_temp: stats.avg_temp || 4.0,
-          max_temp: stats.max_temp || 6.0,
-          avg_humidity: stats.avg_humidity || 70.0,
-          temp_exposure_hours: stats.temp_exposure_hours || 0.0,
-          humidity_exposure_hours: stats.humidity_exposure_hours || 0.0,
-          journey_duration_hours: stats.journey_duration_hours || 12.0,
-          violation_count: stats.violation_count || 0,
+          avg_temp: safeAvgTemp,
+          max_temp: safeMaxTemp,
+          avg_humidity: safeAvgHum,
+          temp_exposure_hours: safeTempExp,
+          humidity_exposure_hours: safeHumExp,
+          journey_duration_hours: safeDuration,
+          violation_count: safeViolations,
         });
       } catch (err) {
-        console.error('Error fetching details', err);
+        if (!controller.signal.aborted) {
+          console.error('Error fetching details', err);
+        }
       }
     }
     fetchShipmentDetails();
-  }, [selectedShipmentId]);
-
-  const runSimulation = async (shipmentId, overrideParams = null, saveAs = null) => {
-    setSimulating(true);
-    const payload = overrideParams || {
-      shipment_id: shipmentId || selectedShipmentId,
-      avg_temp: avgTemp,
-      max_temp: maxTemp,
-      avg_humidity: avgHumidity,
-      temp_exposure_hours: tempExpHours,
-      humidity_exposure_hours: humExpHours,
-      journey_duration_hours: journeyDuration,
-      violation_count: violationCount,
-      name: saveAs,
+    return () => {
+      controller.abort();
     };
-    if (!payload.shipment_id) payload.shipment_id = selectedShipmentId;
-
-    try {
-      const res = await api.runWhatIf(payload);
-      setResult(res);
-      if (saveAs) {
-        const scenRes = await api.getScenarios(selectedShipmentId);
-        setSavedScenarios(scenRes.scenarios || []);
-        alert(`Scenario "${saveAs}" saved successfully!`);
-      }
-    } catch (err) {
-      alert(`Simulation error: ${err.message}`);
-    } finally {
-      setSimulating(false);
-    }
-  };
+  }, [selectedShipmentId, runSimulation]);
 
   if (loading) {
     return <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading What-If Simulator...</div>;
@@ -137,17 +154,17 @@ export default function WhatIfPage() {
         <h2 className="card-title">What-If Journey Environmental Condition Simulator</h2>
         <p style={{ fontSize: '13px', color: '#475569', marginTop: '4px', lineHeight: '1.5' }}>
           Simulate counterfactual transportation conditions for any shipment without altering original stored sensor readings.
-          Adjust temperature, humidity, delay duration, and violation counts to evaluate risk outcomes under hypothetical failure or optimization scenarios.
+          Adjust temperature, humidity, exposure durations, journey delays, and violation counts to evaluate risk outcomes under hypothetical failure or optimization scenarios.
         </p>
       </div>
 
       {/* Select Shipment */}
       <div className="card" style={{ padding: '16px 20px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <label className="form-label" style={{ margin: 0 }}>Select Target Shipment:</label>
           <select
             className="form-control"
-            style={{ width: '320px' }}
+            style={{ width: '340px' }}
             value={selectedShipmentId}
             onChange={(e) => setSelectedShipmentId(e.target.value)}
           >
@@ -226,6 +243,22 @@ export default function WhatIfPage() {
               />
             </div>
 
+            {/* Missing Humidity Exposure Duration Slider Added */}
+            <div className="form-group">
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <label className="form-label">Humidity Exposure Duration: {humExpHours.toFixed(1)} hrs</label>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>Original: {result?.original_features?.humidity_exposure_hours?.toFixed(1) || '0'}h</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max={journeyDuration}
+                step="0.5"
+                value={humExpHours}
+                onChange={(e) => setHumExpHours(parseFloat(e.target.value))}
+              />
+            </div>
+
             <div className="form-group">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <label className="form-label">Journey Duration (Including Delays): {journeyDuration.toFixed(1)} hrs</label>
@@ -237,7 +270,12 @@ export default function WhatIfPage() {
                 max="120"
                 step="1"
                 value={journeyDuration}
-                onChange={(e) => setJourneyDuration(parseFloat(e.target.value))}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setJourneyDuration(val);
+                  if (tempExpHours > val) setTempExpHours(val);
+                  if (humExpHours > val) setHumExpHours(val);
+                }}
               />
             </div>
 
@@ -252,12 +290,18 @@ export default function WhatIfPage() {
                 max="30"
                 step="1"
                 value={violationCount}
-                onChange={(e) => setViolationCount(parseInt(e.target.value))}
+                onChange={(e) => setViolationCount(parseInt(e.target.value, 10))}
               />
             </div>
 
             <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-              <button onClick={() => runSimulation()} className="btn btn-primary" style={{ flex: 1 }} disabled={simulating}>
+              <button
+                type="button"
+                onClick={() => runSimulation()}
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                disabled={simulating}
+              >
                 {simulating ? 'Evaluating...' : 'Re-Run Model Simulation'}
               </button>
             </div>
@@ -274,6 +318,7 @@ export default function WhatIfPage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => runSimulation(null, null, scenarioName)}
+                disabled={simulating}
               >
                 Save
               </button>
@@ -392,4 +437,3 @@ export default function WhatIfPage() {
     </div>
   );
 }
-

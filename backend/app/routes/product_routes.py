@@ -30,7 +30,7 @@ def get_product(profile_id):
 
 
 @products_bp.post("")
-@login_required
+@admin_required
 def create_product():
     data = get_json()
     name = parse_str(data, "name", required=True)
@@ -68,7 +68,7 @@ def create_product():
 
 
 @products_bp.put("/<int:profile_id>")
-@login_required
+@admin_required
 def update_product(profile_id):
     profile = db.session.get(ProductProfile, profile_id)
     if not profile:

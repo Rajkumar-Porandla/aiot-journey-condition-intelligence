@@ -38,7 +38,7 @@ def build_feature_row(category: str, stats: dict) -> list:
     """Return the model input vector (ordered as FEATURE_NAMES)."""
     if category not in CATEGORY_KEYS:
         raise ValueError(f"Unknown product category: {category}")
-    row = [float(stats[name]) for name in NUMERIC_FEATURES]
+    row = [float(stats.get(name) or 0.0) for name in NUMERIC_FEATURES]
     row += [1.0 if c == category else 0.0 for c in CATEGORY_KEYS]
     return row
 

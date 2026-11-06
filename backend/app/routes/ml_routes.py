@@ -5,6 +5,10 @@ from ..auth import login_required
 from ..core.features import NUMERIC_FEATURES, public_features
 from ..extensions import db
 from ..models import MLPrediction, Shipment, SimulationScenario
+try:
+    from ..models import category_label
+except ImportError:
+    from ..core.product_defaults import category_label
 from ..services import ml_service
 from ..services.analytics import shipment_readings, shipment_stats
 from ..services.predictions import NoReadings, compute_shipment_prediction, predict_and_store
@@ -144,9 +148,10 @@ def simulate_what_if():
     scenario_name = data.get("name")
     saved_scenario_id = None
     if scenario_name:
+        user_id = g.current_user.id if getattr(g, "current_user", None) is not None else None
         scen = SimulationScenario(
             shipment_id=shipment.id,
-            user_id=getattr(g, "current_user", None).id if hasattr(g, "current_user") else None,
+            user_id=user_id,
             name=scenario_name.strip(),
             original_features=baseline,
             modified_features=modified,
@@ -234,7 +239,7 @@ def compare_shipments():
             "shipment_code": s.shipment_code,
             "product_name": s.product_name,
             "category": s.category,
-            "category_label": s.product_profile.category,
+            "category_label": category_label(s.category),
             "transport_type": s.transport_type,
             "status": s.status,
             "source_location": s.source_location,

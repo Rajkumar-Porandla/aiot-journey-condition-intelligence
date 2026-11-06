@@ -20,7 +20,7 @@ export function getSavedUser() {
   const u = localStorage.getItem('aiot_auth_user');
   try {
     return u ? JSON.parse(u) : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }

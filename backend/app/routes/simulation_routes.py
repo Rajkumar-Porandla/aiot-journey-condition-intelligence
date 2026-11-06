@@ -18,7 +18,7 @@ def _handle_api_error(err):
 
 @sim_bp.errorhandler(SimulationError)
 def _handle_sim_error(err):
-    return jsonify({"error": str(err)}), 409
+    return jsonify({"error": str(err)}), getattr(err, "status_code", 409) or 409
 
 
 @sim_bp.post("/simulation/start/<int:shipment_id>")

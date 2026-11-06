@@ -33,7 +33,7 @@ export default function CreateShipmentPage() {
           setSourceLoc(locRes.locations[0].name);
           setDestLoc(locRes.locations[1].name);
         }
-      } catch (err) {
+      } catch {
         setError('Failed to load product profiles or locations.');
       } finally {
         setLoading(false);

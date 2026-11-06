@@ -9,26 +9,44 @@ export default function AlertsPage() {
   const [severityFilter, setSeverityFilter] = useState('');
   const [activeFilter, setActiveFilter] = useState('');
 
-  const loadAlerts = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (severityFilter) params.append('severity', severityFilter);
-      if (activeFilter) params.append('is_active', activeFilter);
-      const res = await api.getAllAlerts(params.toString());
-      setAlerts(res.alerts);
-      setTotalCount(res.total);
-      setActiveCount(res.active_count);
-    } catch (err) {
-      console.error('Failed to load alerts', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadAlerts();
-    const timer = setInterval(loadAlerts, 5000);
-    return () => clearInterval(timer);
+    let ignore = false;
+    const params = new URLSearchParams();
+    if (severityFilter) params.append('severity', severityFilter);
+    if (activeFilter) params.append('is_active', activeFilter);
+
+    api.getAllAlerts(params.toString())
+      .then((res) => {
+        if (!ignore) {
+          setAlerts(res.alerts);
+          setTotalCount(res.total);
+          setActiveCount(res.active_count);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          console.error('Failed to load alerts', err);
+          setLoading(false);
+        }
+      });
+
+    const timer = setInterval(() => {
+      api.getAllAlerts(params.toString())
+        .then((res) => {
+          if (!ignore) {
+            setAlerts(res.alerts);
+            setTotalCount(res.total);
+            setActiveCount(res.active_count);
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
+    return () => {
+      ignore = true;
+      clearInterval(timer);
+    };
   }, [severityFilter, activeFilter]);
 
   return (

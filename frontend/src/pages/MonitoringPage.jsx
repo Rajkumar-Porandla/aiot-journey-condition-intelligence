@@ -24,8 +24,10 @@ export default function MonitoringPage() {
 
   const mapContainerRef = useRef(null);
   const leafletMapRef = useRef(null);
+  const markersLayerRef = useRef(null);
   const routePolylineRef = useRef(null);
   const truckMarkerRef = useRef(null);
+  const lastShipmentIdRef = useRef(null);
 
   // Load shipments dropdown
   useEffect(() => {
@@ -33,11 +35,8 @@ export default function MonitoringPage() {
       try {
         const res = await api.getShipments();
         setShipments(res.shipments);
-        if (res.shipments.length > 0) {
-          const targetId = selectedShipmentId || res.shipments[0].id;
-          if (!selectedShipmentId) {
-            setSearchParams({ shipment: targetId });
-          }
+        if (res.shipments.length > 0 && !selectedShipmentId) {
+          setSearchParams({ shipment: res.shipments[0].id });
         }
       } catch (err) {
         console.error('Failed to load shipments list', err);
@@ -46,13 +45,13 @@ export default function MonitoringPage() {
       }
     }
     loadShipmentsList();
-  }, []);
+  }, [selectedShipmentId, setSearchParams]);
 
   // Poll current shipment telemetry & alerts
   useEffect(() => {
     if (!selectedShipmentId) return;
 
-    let isMounted = true;
+    const controller = new AbortController();
 
     async function fetchTelemetryData() {
       try {
@@ -63,62 +62,114 @@ export default function MonitoringPage() {
           api.getShipmentPredictions(selectedShipmentId),
         ]);
 
-        if (!isMounted) return;
+        if (controller.signal.aborted) return;
         setCurrentShipment(shipmentRes.shipment);
         setTelemetry(readingsRes);
         setAlerts(alertsRes.alerts);
         setPrediction(predRes.latest_prediction);
         setSimMode(shipmentRes.shipment.simulation?.mode || 'NORMAL');
       } catch (err) {
-        console.error('Error fetching telemetry', err);
+        if (!controller.signal.aborted) {
+          console.error('Error fetching telemetry', err);
+        }
       }
     }
 
     fetchTelemetryData();
     const timer = setInterval(fetchTelemetryData, 2000); // 2-sec real-time refresh
     return () => {
-      isMounted = false;
+      controller.abort();
       clearInterval(timer);
     };
   }, [selectedShipmentId]);
 
-  // Leaflet Map Initialization & Real-Time Marker Updates
+  // Initialize Leaflet Map once and handle unmount cleanup
   useEffect(() => {
-    if (!currentShipment || !mapContainerRef.current) return;
+    if (!mapContainerRef.current) return;
 
     if (!leafletMapRef.current) {
-      const map = L.map(mapContainerRef.current).setView(
-        [currentShipment.source_lat, currentShipment.source_lon],
-        6
-      );
+      const map = L.map(mapContainerRef.current, {
+        zoomControl: true,
+      }).setView([20.5937, 78.9629], 5);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
       }).addTo(map);
 
+      const markersGroup = L.layerGroup().addTo(map);
+      markersLayerRef.current = markersGroup;
       leafletMapRef.current = map;
     }
 
+    return () => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+        markersLayerRef.current = null;
+        routePolylineRef.current = null;
+        truckMarkerRef.current = null;
+        lastShipmentIdRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update bounds & origin/destination markers when shipment changes
+  useEffect(() => {
     const map = leafletMapRef.current;
+    const markersGroup = markersLayerRef.current;
+    if (!map || !markersGroup || !currentShipment) return;
 
-    // Draw Source and Destination markers
-    L.circleMarker([currentShipment.source_lat, currentShipment.source_lon], {
-      color: '#16a34a',
-      radius: 8,
-      fillOpacity: 0.9,
-    })
-      .addTo(map)
-      .bindPopup(`<b>Origin:</b> ${currentShipment.source_location}`);
+    if (lastShipmentIdRef.current !== currentShipment.id) {
+      lastShipmentIdRef.current = currentShipment.id;
 
-    L.circleMarker([currentShipment.destination_lat, currentShipment.destination_lon], {
-      color: '#dc2626',
-      radius: 8,
-      fillOpacity: 0.9,
-    })
-      .addTo(map)
-      .bindPopup(`<b>Destination:</b> ${currentShipment.destination_location}`);
+      // Clear previous markers
+      markersGroup.clearLayers();
 
-    // Update Truck / Current Position Marker
+      // Remove previous polyline and truck
+      if (routePolylineRef.current) {
+        routePolylineRef.current.remove();
+        routePolylineRef.current = null;
+      }
+      if (truckMarkerRef.current) {
+        truckMarkerRef.current.remove();
+        truckMarkerRef.current = null;
+      }
+
+      // Add origin and destination markers into the layer group
+      L.circleMarker([currentShipment.source_lat, currentShipment.source_lon], {
+        color: '#16a34a',
+        fillColor: '#22c55e',
+        radius: 8,
+        fillOpacity: 0.9,
+        weight: 2,
+      })
+        .addTo(markersGroup)
+        .bindPopup(`<b>Origin:</b> ${currentShipment.source_location}`);
+
+      L.circleMarker([currentShipment.destination_lat, currentShipment.destination_lon], {
+        color: '#dc2626',
+        fillColor: '#ef4444',
+        radius: 8,
+        fillOpacity: 0.9,
+        weight: 2,
+      })
+        .addTo(markersGroup)
+        .bindPopup(`<b>Destination:</b> ${currentShipment.destination_location}`);
+
+      // Re-center and fit bounds
+      const bounds = L.latLngBounds(
+        [currentShipment.source_lat, currentShipment.source_lon],
+        [currentShipment.destination_lat, currentShipment.destination_lon]
+      );
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 8 });
+    }
+  }, [currentShipment]);
+
+  // Update Truck Position and Route Polyline on telemetry updates
+  useEffect(() => {
+    const map = leafletMapRef.current;
+    if (!map || !currentShipment) return;
+
     const latest = telemetry?.latest_reading;
     const currentLat = latest ? latest.latitude : currentShipment.source_lat;
     const currentLon = latest ? latest.longitude : currentShipment.source_lon;
@@ -135,13 +186,16 @@ export default function MonitoringPage() {
       truckMarkerRef.current.setLatLng([currentLat, currentLon]);
     }
 
-    // Polyline of route history
     if (telemetry?.readings?.length > 1) {
       const latlngs = telemetry.readings.map((r) => [r.latitude, r.longitude]);
       if (routePolylineRef.current) {
         routePolylineRef.current.setLatLngs(latlngs);
       } else {
-        routePolylineRef.current = L.polyline(latlngs, { color: '#0d9488', weight: 4, opacity: 0.8 }).addTo(map);
+        routePolylineRef.current = L.polyline(latlngs, {
+          color: '#0d9488',
+          weight: 4,
+          opacity: 0.8,
+        }).addTo(map);
       }
     }
   }, [currentShipment, telemetry]);
@@ -188,8 +242,6 @@ export default function MonitoringPage() {
   }
 
   const readingsList = telemetry?.readings || [];
-  const profile = currentShipment?.product_profile;
-  const thresholds = currentShipment?.stats ? currentShipment.stats : {};
 
   // Temperature chart config
   const tempChartData = {

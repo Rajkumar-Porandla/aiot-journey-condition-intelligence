@@ -41,6 +41,16 @@ def _user_from_request():
     return user, None
 
 
+def get_current_user():
+    """Retrieve user from Authorization header for the current request."""
+    user, _ = _user_from_request()
+    g.current_user = user
+    return user
+
+
+user_from_request = _user_from_request
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):

@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/useAuth';
 
 export default function ProductsPage() {
+  const { isAdmin } = useAuth();
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -17,19 +20,37 @@ export default function ProductsPage() {
     description: '',
   });
 
-  const loadProducts = async () => {
-    try {
-      const res = await api.getProducts();
-      setProducts(res.products);
-    } catch (err) {
-      console.error('Failed to load profiles', err);
-    } finally {
-      setLoading(false);
-    }
+  const loadProducts = () => {
+    return api.getProducts()
+      .then((res) => {
+        setProducts(res.products);
+      })
+      .catch((err) => {
+        console.error('Failed to load profiles', err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
-    loadProducts();
+    let ignore = false;
+    api.getProducts()
+      .then((res) => {
+        if (!ignore) {
+          setProducts(res.products);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          console.error('Failed to load profiles', err);
+          setLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleEditClick = (p) => {
@@ -48,6 +69,7 @@ export default function ProductsPage() {
   };
 
   const handleCreateClick = () => {
+    if (!isAdmin) return;
     setEditingProduct(null);
     setCreating(true);
     setFormData({
@@ -64,6 +86,10 @@ export default function ProductsPage() {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      alert('Operator Mode: Administrator privileges are required to save changes.');
+      return;
+    }
     try {
       if (editingProduct) {
         await api.updateProduct(editingProduct.id, formData);
@@ -87,7 +113,7 @@ export default function ProductsPage() {
   return (
     <div>
       {/* Intro Banner */}
-      <div className="card" style={{ borderLeft: '4px solid #0d9488', marginBottom: '24px' }}>
+      <div className="card" style={{ borderLeft: '4px solid #0d9488', marginBottom: '20px' }}>
         <h2 className="card-title">Product Category Environmental Condition Profiles</h2>
         <p style={{ fontSize: '13px', color: '#475569', marginTop: '4px', lineHeight: '1.5' }}>
           Configure safe storage bounds for the five primary cold-chain product categories: <b>Fruits and Vegetables</b>, <b>Dairy Products</b>,
@@ -96,10 +122,29 @@ export default function ProductsPage() {
         </p>
       </div>
 
+      {/* Role-Based Access Banner for Operators */}
+      {!isAdmin && (
+        <div className="alert-box alert-info" style={{ marginBottom: '20px' }}>
+          🛡️ <b>Operator Mode: View-Only (Admin role required to modify profiles)</b> — You can inspect configured environmental profiles and threshold ranges, but creating new profiles or updating safe storage boundaries requires an administrator account.
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-        <button onClick={handleCreateClick} className="btn btn-primary">
-          + Add Custom Product Profile
-        </button>
+        {isAdmin ? (
+          <button onClick={handleCreateClick} className="btn btn-primary">
+            + Add Custom Product Profile
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled
+            title="Administrator privileges required to create product profiles"
+            style={{ opacity: 0.6, cursor: 'not-allowed' }}
+          >
+            🔒 + Add Custom Product Profile (Admin Only)
+          </button>
+        )}
       </div>
 
       {/* Profiles Grid */}
@@ -148,8 +193,12 @@ export default function ProductsPage() {
             </div>
 
             <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => handleEditClick(p)} className="btn btn-secondary btn-sm">
-                Edit Thresholds
+              <button
+                type="button"
+                onClick={() => handleEditClick(p)}
+                className="btn btn-secondary btn-sm"
+              >
+                {isAdmin ? 'Edit Thresholds' : 'View Thresholds'}
               </button>
             </div>
           </div>
@@ -159,9 +208,14 @@ export default function ProductsPage() {
       {/* Edit or Create Modal / Card */}
       {(editingProduct || creating) && (
         <div className="card" style={{ border: '2px solid #0d9488' }}>
-          <h3 className="card-title" style={{ marginBottom: '16px' }}>
-            {creating ? 'Create New Product Profile' : `Edit Profile: ${editingProduct.name}`}
-          </h3>
+          <div className="card-header">
+            <h3 className="card-title">
+              {creating ? 'Create New Product Profile' : `${isAdmin ? 'Edit' : 'Inspect'} Profile: ${editingProduct?.name}`}
+            </h3>
+            {!isAdmin && (
+              <span className="badge badge-medium">View-Only Mode</span>
+            )}
+          </div>
 
           <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="form-grid">
@@ -171,6 +225,7 @@ export default function ProductsPage() {
                   type="text"
                   className="form-control"
                   value={formData.name}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
                 />
@@ -181,7 +236,7 @@ export default function ProductsPage() {
                 <select
                   className="form-control"
                   value={formData.category}
-                  disabled={!!editingProduct}
+                  disabled={!isAdmin || !!editingProduct}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 >
                   <option value="fruits_vegetables">Fruits and Vegetables</option>
@@ -201,6 +256,7 @@ export default function ProductsPage() {
                   step="0.5"
                   className="form-control"
                   value={formData.min_temp}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, min_temp: parseFloat(e.target.value) })}
                   required
                 />
@@ -213,6 +269,7 @@ export default function ProductsPage() {
                   step="0.5"
                   className="form-control"
                   value={formData.max_temp}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, max_temp: parseFloat(e.target.value) })}
                   required
                 />
@@ -229,6 +286,7 @@ export default function ProductsPage() {
                   max="100"
                   className="form-control"
                   value={formData.min_humidity}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, min_humidity: parseFloat(e.target.value) })}
                   required
                 />
@@ -243,6 +301,7 @@ export default function ProductsPage() {
                   max="100"
                   className="form-control"
                   value={formData.max_humidity}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, max_humidity: parseFloat(e.target.value) })}
                   required
                 />
@@ -255,6 +314,7 @@ export default function ProductsPage() {
                 <select
                   className="form-control"
                   value={formData.sensitivity}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, sensitivity: e.target.value })}
                 >
                   <option value="Low">Low</option>
@@ -270,14 +330,20 @@ export default function ProductsPage() {
                   type="text"
                   className="form-control"
                   value={formData.description}
+                  disabled={!isAdmin}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-              <button type="submit" className="btn btn-primary">
-                Save Product Profile
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!isAdmin}
+                title={isAdmin ? 'Save Product Profile' : 'Operator Mode: Administrator role required to save profile changes'}
+              >
+                {isAdmin ? 'Save Product Profile' : 'Save Changes (Admin Only)'}
               </button>
               <button
                 type="button"
@@ -287,7 +353,7 @@ export default function ProductsPage() {
                   setCreating(false);
                 }}
               >
-                Cancel
+                {isAdmin ? 'Cancel' : 'Close'}
               </button>
             </div>
           </form>
@@ -296,4 +362,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

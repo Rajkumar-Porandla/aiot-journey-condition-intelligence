@@ -1,7 +1,7 @@
 """Authentication endpoints: register, login, current user, logout."""
 from flask import Blueprint, g, jsonify
 
-from ..auth import issue_token, login_required
+from ..auth import get_current_user, issue_token, login_required
 from ..extensions import db
 from ..models import User, utcnow
 from ..utils import ApiError, error_response, get_json, parse_choice, parse_str
@@ -22,6 +22,11 @@ def register():
     password = parse_str(data, "password", required=True, max_len=128)
     full_name = parse_str(data, "full_name", required=False, max_len=120, default="")
     role = parse_choice(data, "role", choices=User.ROLES, required=False, default="operator")
+
+    if role == "admin":
+        requester = get_current_user()
+        if not requester or getattr(g.current_user, "role", None) != "admin":
+            raise ApiError("Only administrators can register admin accounts.", 403)
 
     if len(password) < 6:
         raise ApiError("Password must be at least 6 characters.", 400, {"password": "Too short"})

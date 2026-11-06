@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import { api } from '../services/api';
@@ -13,26 +13,8 @@ export default function ComparePage() {
   const [comparing, setComparing] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function loadShipmentsList() {
-      try {
-        const res = await api.getShipments();
-        setShipments(res.shipments);
-        if (res.shipments.length >= 2) {
-          const initial = [res.shipments[0].id, res.shipments[1].id];
-          setSelectedIds(initial);
-          runComparison(initial);
-        }
-      } catch (err) {
-        setError('Failed to fetch shipments list');
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadShipmentsList();
-  }, []);
-
-  const runComparison = async (ids) => {
+  // Defined BEFORE any useEffect referencing it
+  const runComparison = useCallback(async (ids) => {
     if (ids.length < 2) {
       alert('Please select at least 2 shipments to compare.');
       return;
@@ -47,9 +29,29 @@ export default function ComparePage() {
     } finally {
       setComparing(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    async function loadShipmentsList() {
+      try {
+        const res = await api.getShipments();
+        setShipments(res.shipments);
+        if (res.shipments.length >= 2) {
+          const initial = [res.shipments[0].id, res.shipments[1].id];
+          setSelectedIds(initial);
+          runComparison(initial);
+        }
+      } catch (err) {
+        setError(err.message || 'Failed to fetch shipments list');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadShipmentsList();
+  }, [runComparison]);
 
   const toggleSelect = (id) => {
+    if (comparing) return;
     let next;
     if (selectedIds.includes(id)) {
       next = selectedIds.filter((x) => x !== id);
@@ -102,9 +104,17 @@ export default function ComparePage() {
 
       {/* Shipment Selection Checklist */}
       <div className="card" style={{ marginBottom: '24px' }}>
-        <h3 className="card-title" style={{ marginBottom: '12px' }}>
-          Select Shipments for Side-by-Side Analysis (Minimum 2):
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <h3 className="card-title" style={{ margin: 0 }}>
+            Select Shipments for Side-by-Side Analysis (Minimum 2):
+          </h3>
+          {comparing && (
+            <span className="badge badge-transit" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span className="status-dot" /> Analyzing Consignments...
+            </span>
+          )}
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
           {shipments.map((s) => {
             const isChecked = selectedIds.includes(s.id);
@@ -119,13 +129,16 @@ export default function ComparePage() {
                   borderRadius: '6px',
                   border: isChecked ? '1px solid #0d9488' : '1px solid #cbd5e1',
                   backgroundColor: isChecked ? '#f0fdfa' : 'white',
-                  cursor: 'pointer',
+                  cursor: comparing ? 'not-allowed' : 'pointer',
+                  opacity: comparing ? 0.7 : 1,
                   fontSize: '13px',
+                  transition: 'opacity 0.15s ease',
                 }}
               >
                 <input
                   type="checkbox"
                   checked={isChecked}
+                  disabled={comparing}
                   onChange={() => toggleSelect(s.id)}
                 />
                 <div>
@@ -139,6 +152,14 @@ export default function ComparePage() {
           })}
         </div>
       </div>
+
+      {/* Loading feedback banner when comparing */}
+      {comparing && (
+        <div className="alert-box alert-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span>🔄</span>
+          <span><b>Computing Multi-Shipment Comparative Analysis:</b> Aggregating telemetry exposures, cross-category variance, and ML safety scores...</span>
+        </div>
+      )}
 
       {error && <div className="alert-box alert-warning">{error}</div>}
 
@@ -245,4 +266,3 @@ export default function ComparePage() {
     </div>
   );
 }
-

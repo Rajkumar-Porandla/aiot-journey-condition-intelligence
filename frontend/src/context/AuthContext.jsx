@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api, getSavedUser, setAuthToken, setSavedUser } from '../services/api';
-
-const AuthContext = createContext(null);
+import { AuthContext } from './authContextInstance';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(getSavedUser());
@@ -49,7 +48,7 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await api.logout();
-    } catch (e) {
+    } catch {
       // Ignore logout errors
     } finally {
       setAuthToken(null);
@@ -64,12 +63,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
-
