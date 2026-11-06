@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+instance/
+*.db
+*.sqlite3
+
+# Node / Vite
+node_modules/
+dist/
+.env
+.env.local
+.DS_Store
+.vercel

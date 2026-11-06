@@ -1,0 +1,215 @@
+{
+  "model_version": "rf-20261106085849",
+  "trained_at": "2026-11-06T08:58:49Z",
+  "sklearn_version": "1.9.1",
+  "features": [
+    "avg_temp",
+    "max_temp",
+    "avg_humidity",
+    "temp_exposure_hours",
+    "humidity_exposure_hours",
+    "journey_duration_hours",
+    "violation_count",
+    "cat_fruits_vegetables",
+    "cat_dairy",
+    "cat_frozen",
+    "cat_pharmaceutical",
+    "cat_flowers"
+  ],
+  "classes": [
+    "High Risk",
+    "Low Risk",
+    "Medium Risk"
+  ],
+  "hyperparameters": {
+    "n_estimators": 150,
+    "min_samples_leaf": 3,
+    "max_depth": 16,
+    "random_state": 42
+  },
+  "dataset": {
+    "path": "synthetic_journeys.csv",
+    "rows": 15000,
+    "journeys": 5000,
+    "train_rows": 12000,
+    "test_rows": 3000,
+    "train_journeys": 4000,
+    "test_journeys": 1000,
+    "split": "GroupShuffleSplit by journey_id (80/20), no journey in both sets",
+    "class_distribution": {
+      "Low Risk": 8777,
+      "High Risk": 3767,
+      "Medium Risk": 2456
+    },
+    "category_distribution": {
+      "dairy": 3099,
+      "fruits_vegetables": 2991,
+      "flowers": 2985,
+      "frozen": 2973,
+      "pharmaceutical": 2952
+    }
+  },
+  "classification": {
+    "accuracy": 0.9453,
+    "precision_macro": 0.9148,
+    "recall_macro": 0.9419,
+    "f1_macro": 0.9248,
+    "f1_weighted": 0.9475,
+    "per_class": [
+      {
+        "class": "Low Risk",
+        "precision": 0.9934,
+        "recall": 0.9553,
+        "f1": 0.9739,
+        "support": 1721
+      },
+      {
+        "class": "Medium Risk",
+        "precision": 0.7699,
+        "recall": 0.949,
+        "f1": 0.8501,
+        "support": 490
+      },
+      {
+        "class": "High Risk",
+        "precision": 0.9811,
+        "recall": 0.9214,
+        "f1": 0.9503,
+        "support": 789
+      }
+    ],
+    "confusion_matrix": {
+      "labels": [
+        "Low Risk",
+        "Medium Risk",
+        "High Risk"
+      ],
+      "matrix": [
+        [
+          1644,
+          77,
+          0
+        ],
+        [
+          11,
+          465,
+          14
+        ],
+        [
+          0,
+          62,
+          727
+        ]
+      ]
+    }
+  },
+  "regression": {
+    "mae": 2.9879,
+    "rmse": 4.097,
+    "r2": 0.9856
+  },
+  "permutation_importance": {
+    "classifier": [
+      {
+        "feature": "temp_exposure_hours",
+        "label": "Temperature exposure duration",
+        "importance": 0.2768,
+        "std": 0.00656
+      },
+      {
+        "feature": "humidity_exposure_hours",
+        "label": "Humidity exposure duration",
+        "importance": 0.06453,
+        "std": 0.00277
+      },
+      {
+        "feature": "max_temp",
+        "label": "Maximum temperature",
+        "importance": 0.04487,
+        "std": 0.00384
+      },
+      {
+        "feature": "product_category",
+        "label": "Product category",
+        "importance": 0.02033,
+        "std": 0.00101
+      },
+      {
+        "feature": "avg_humidity",
+        "label": "Average humidity",
+        "importance": 0.00767,
+        "std": 0.00121
+      },
+      {
+        "feature": "avg_temp",
+        "label": "Average temperature",
+        "importance": 0.00493,
+        "std": 0.00157
+      },
+      {
+        "feature": "journey_duration_hours",
+        "label": "Journey duration",
+        "importance": 0.0022,
+        "std": 0.00119
+      },
+      {
+        "feature": "violation_count",
+        "label": "Number of violations",
+        "importance": 0.002,
+        "std": 0.00187
+      }
+    ],
+    "regressor": [
+      {
+        "feature": "temp_exposure_hours",
+        "label": "Temperature exposure duration",
+        "importance": 1.45254,
+        "std": 0.0265
+      },
+      {
+        "feature": "humidity_exposure_hours",
+        "label": "Humidity exposure duration",
+        "importance": 0.04231,
+        "std": 0.00033
+      },
+      {
+        "feature": "max_temp",
+        "label": "Maximum temperature",
+        "importance": 0.0159,
+        "std": 0.00085
+      },
+      {
+        "feature": "journey_duration_hours",
+        "label": "Journey duration",
+        "importance": 0.01473,
+        "std": 0.00054
+      },
+      {
+        "feature": "avg_humidity",
+        "label": "Average humidity",
+        "importance": 0.00801,
+        "std": 0.00064
+      },
+      {
+        "feature": "product_category",
+        "label": "Product category",
+        "importance": 0.0074,
+        "std": 0.00049
+      },
+      {
+        "feature": "avg_temp",
+        "label": "Average temperature",
+        "importance": 0.00527,
+        "std": 0.00031
+      },
+      {
+        "feature": "violation_count",
+        "label": "Number of violations",
+        "importance": 0.00142,
+        "std": 0.0001
+      }
+    ],
+    "method": "Grouped permutation importance on held-out test journeys (drop in accuracy / R\u00b2 when a feature is shuffled; one-hot category columns shuffled together)."
+  },
+  "disclaimer": "Models are trained on SIMULATED journeys labelled by a documented formula. Outputs are environmental quality-risk estimates, not verified spoilage or safety assessments."
+}
